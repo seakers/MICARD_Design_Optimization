@@ -4,7 +4,7 @@ Accurate power draw depends on joint angles/velocity and requires a motion
 simulation not yet available [Slack]. This placeholder keeps the metric slot
 so it can be swapped in later without touching optimizers [MICARD 1.0.2].
 """
-from evaluation.base import register_metric
+from micard_design_optimization.evaluation.base import register_metric
 
 
 @register_metric("power")

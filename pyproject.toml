@@ -1,0 +1,27 @@
+[project]
+name = "micard-design-optimization"
+version = "0.1.0"
+description = "Multi-objective design-space exploration for modular serial robotic arms"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+# Only run_ppo_optimization needs this -- random search and the GA run fine
+# without it (torch is imported lazily, inside that function, for exactly
+# this reason). Install this extra to make the "ppo" method usable.
+ppo = ["torch>=2.0"]
+
+[project.scripts]
+micard-design-optimization = "micard_design_optimization.cli:main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["micard_design_optimization*"]
+
+[tool.setuptools.package-data]
+micard_design_optimization = ["utils/dynamixel_single_axis.json"]

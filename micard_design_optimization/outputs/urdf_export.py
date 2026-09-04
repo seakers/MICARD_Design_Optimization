@@ -7,7 +7,7 @@ The generated XML is directly consumable by the three.js viewer [robot_chat 11].
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
-from utils.design import ORIENTATION_AXES
+from micard_design_optimization.utils.design import ORIENTATION_AXES
 
 
 def _axis_str(orientation):

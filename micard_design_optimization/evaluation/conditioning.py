@@ -10,9 +10,9 @@ and the placeholder manipulability.py remains authoritative [MICARD 5.0].
 import numpy as np
 from xml.etree import ElementTree as ET
 
-from evaluation.base import register_metric
-from outputs.urdf_export import design_to_urdf, design_to_srdf
-from utils.metrics_client import MetricsClient
+from micard_design_optimization.evaluation.base import register_metric
+from micard_design_optimization.outputs.urdf_export import design_to_urdf, design_to_srdf
+from micard_design_optimization.utils.metrics_client import MetricsClient
 
 # --- Easily-changed configuration (single place to edit when talking to team) ---
 CONDITIONING_CONFIG = {

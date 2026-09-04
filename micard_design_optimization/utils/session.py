@@ -11,7 +11,11 @@ from pathlib import Path
 
 class Session:
     def __init__(self, root="designs", session_id=None):
-        self.session_id = session_id or datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Microsecond resolution, not just seconds -- an embedding caller
+        # (e.g. a design_team Tool) can legitimately make two calls within
+        # the same second, and second-resolution ids would collide, silently
+        # mixing both runs' files into one folder.
+        self.session_id = session_id or datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         self.root = Path(root) / self.session_id
         # Subfolders reflect the required output/traceability artifacts [MICARD 4.0, 5.0].
         self.dirs = {

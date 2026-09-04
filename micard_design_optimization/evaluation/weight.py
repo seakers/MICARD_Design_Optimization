@@ -1,6 +1,6 @@
 """Total weight: motors (catalog) + link structural mass [MICARD 1.0.3]."""
-from evaluation.base import register_metric
-from evaluation.structural import link_mass
+from micard_design_optimization.evaluation.base import register_metric
+from micard_design_optimization.evaluation.structural import link_mass
 
 
 @register_metric("weight")

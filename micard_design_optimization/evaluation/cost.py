@@ -1,5 +1,5 @@
 """Total cost from the catalog (optimization objective: minimize) [MICARD 1.0.1]."""
-from evaluation.base import register_metric
+from micard_design_optimization.evaluation.base import register_metric
 
 
 @register_metric("cost")

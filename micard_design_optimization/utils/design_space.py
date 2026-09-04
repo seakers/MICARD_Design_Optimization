@@ -6,8 +6,8 @@ The gene layout per slot is: [motor_idx, orientation_idx, link_len, tube_idx].
 """
 import numpy as np
 
-from utils.design import Design, Segment, ORIENTATIONS
-from utils.materials import TUBE_PRESETS, DEFAULT_MATERIAL
+from micard_design_optimization.utils.design import Design, Segment, ORIENTATIONS
+from micard_design_optimization.utils.materials import TUBE_PRESETS, DEFAULT_MATERIAL
 
 
 class DesignSpace:

@@ -1,8 +1,8 @@
 """Yoshikawa manipulability index [MICARD 1.0.5]."""
 import numpy as np
 
-from evaluation.base import register_metric
-from evaluation.kinematics import jacobian
+from micard_design_optimization.evaluation.base import register_metric
+from micard_design_optimization.evaluation.kinematics import jacobian
 
 
 def yoshikawa(J):

@@ -6,7 +6,7 @@ but uses the custom hypervolume in utils.pareto instead of pymoo [random_search 
 """
 import numpy as np
 
-from utils.pareto import pareto_progress
+from micard_design_optimization.utils.pareto import pareto_progress
 
 
 def run_random_search(problem, num_exec=2000, rng=None, session=None):

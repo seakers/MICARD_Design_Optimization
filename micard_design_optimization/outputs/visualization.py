@@ -11,7 +11,7 @@ from xml.etree import ElementTree as ET
 
 import numpy as np
 
-from outputs.urdf_export import design_to_urdf
+from micard_design_optimization.outputs.urdf_export import design_to_urdf
 
 
 # --- 3D robot viewer (reuses the prototype three.js template) [robot_chat 11] ---
@@ -304,7 +304,7 @@ def export_pareto_plot(all_obj, all_constraints, objective_labels, out_dir,
     no extra Python dependency and opens in any browser.
     """
     import numpy as np
-    from utils.pareto import is_pareto_efficient, normalize_objectives
+    from micard_design_optimization.utils.pareto import is_pareto_efficient, normalize_objectives
 
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)

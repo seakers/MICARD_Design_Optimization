@@ -7,7 +7,7 @@ import csv
 import json
 from pathlib import Path
 
-from evaluation.structural import link_mass
+from micard_design_optimization.evaluation.structural import link_mass
 
 
 def build_bom(design):

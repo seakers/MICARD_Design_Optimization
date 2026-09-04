@@ -7,7 +7,7 @@ dominated sorting + crowding distance (like the reference nsga2 selection
 """
 import numpy as np
 
-from utils.pareto import is_pareto_efficient, pareto_progress
+from micard_design_optimization.utils.pareto import is_pareto_efficient, pareto_progress
 
 
 def _dominates(a, b, min_mask):

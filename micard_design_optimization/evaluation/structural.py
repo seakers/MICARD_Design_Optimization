@@ -6,8 +6,8 @@ engineering analysis [MICARD 4.0.4].
 """
 import numpy as np
 
-from evaluation.base import register_metric
-from utils.materials import get_material
+from micard_design_optimization.evaluation.base import register_metric
+from micard_design_optimization.utils.materials import get_material
 
 GRAVITY = 9.81  # used only for a conservative self-weight + payload estimate
 

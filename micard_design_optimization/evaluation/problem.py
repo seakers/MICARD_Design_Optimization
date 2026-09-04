@@ -11,7 +11,7 @@ gradient rather than a flat penalty [4].
 """
 import numpy as np
 
-from evaluation.base import compute_all_metrics, available_metrics
+from micard_design_optimization.evaluation.base import compute_all_metrics, available_metrics
 
 
 class RobotArmProblem:

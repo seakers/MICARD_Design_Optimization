@@ -6,7 +6,7 @@ Yoshikawa manipulability index [MICARD 1.0].
 """
 import numpy as np
 
-from utils.design import ORIENTATION_AXES
+from micard_design_optimization.utils.design import ORIENTATION_AXES
 
 
 def _rotation(axis, theta):

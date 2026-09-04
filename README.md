@@ -12,9 +12,20 @@ folder so a full run can be reconstructed later.
 > still referenced but not included). Happy to refine details further once those are
 > available.
 
+## Install
+
+```bash
+./setup.sh                  # creates .venv here, installs the ppo (torch) extra too
+```
+
+`torch` is heavy and version-pinned, so this repo keeps its own venv rather than
+assuming it's installed into a caller's. `pip install -e .` (or `-e ".[ppo]"`) also
+works directly, e.g. for development against this repo in its own right.
+
 ## Pipeline
 
-`main.py` runs one end-to-end session:
+`micard_design_optimization.run.run()` — or `main.py` / the `micard-design-optimization`
+console script as a CLI wrapper over it — runs one end-to-end session:
 
 1. **Session** — a timestamped run folder is created for traceability (designs,
    intermediate results, plots) via `utils/session.py`.
@@ -122,31 +133,58 @@ without touching the optimizers:
 - `outputs/visualization.py` — 3D viewer render, per-method Pareto plot, and the
   cross-method hypervolume comparison plot.
 - `utils/session.py` — a `Session` creates a timestamped folder
-  (`designs/<session_id>/`) with subfolders for every traceability artifact:
+  (`<output_root>/<session_id>/`) with subfolders for every traceability artifact:
   `designs/` (`save_design`), `intermediate/` (`log_intermediate`, used for
   per-design objectives, GA/PPO training curves, reachability reports, run config),
   `prompts/` and `responses/` (`log_prompt` / `log_response`, for any LLM-in-the-loop
   steps), `outputs/` (URDF/SRDF/BOM/plots/viewer), and `meta/` (auto-logged
   session id + creation time, and anywhere model/version metadata is recorded). Every
   write is timestamped and JSON-serialized, so a full run is reconstructable after
-  the fact.
+  the fact. `output_root` (default `"designs"`, relative to the caller's cwd) is a
+  `run()` parameter — an embedding caller passes its own `output_root` (e.g. a
+  subfolder of its project's own storage) so runs land there instead of this repo's
+  working directory. Each call still gets its own (datetime-based) session-id
+  subfolder underneath it, so concurrent/repeated runs against the same
+  `output_root` never collide.
 
 ## Running
 
-```bash
-python main.py
+As a library:
+
+```python
+from micard_design_optimization.run import run
+
+result = run(
+    methods=["random_search", "genetic_algorithm"],  # default: all three, incl. "ppo"
+    output_root="/path/to/some/project/design-optimization",
+    seed=0,
+)
 ```
 
-Key parameters (see `main()` in `main.py`):
+Returns a JSON-serializable dict — session id/root, and per method: evaluation counts,
+final hypervolume, the design-space plot, and one manifest entry per exported Pareto
+design (objectives, reachability, URDF/SRDF/BOM/viewer paths). See `run()`'s docstring
+for the full shape.
 
-| Arg | Meaning |
+As a CLI:
+
+```bash
+python main.py                      # from a checkout, no install needed
+micard-design-optimization          # equivalent, once pip installed
+micard-design-optimization --json   # one JSON line on stdout instead of a summary
+```
+
+| Flag | Meaning |
 |---|---|
-| `catalog_path` | Path to the component catalog JSON. |
-| `max_joints` | Max DoF an arm can have (gene vector length). |
-| `n_ports` | Platform mounting ports the base can attach to. |
-| `random_evals` | NFE for random search (defaults to `ga_pop * ga_gen` for a fair comparison). |
-| `ga_pop`, `ga_gen` | GA population size / generations (also reused as PPO `epochs`/`mini_batch_size`). |
-| `seed` | RNG seed for reproducibility. |
+| `--catalog-path` | Component catalog JSON (default: the bundled Dynamixel catalog). |
+| `--max-joints` | Max DoF an arm can have (gene vector length). |
+| `--n-ports` | Platform mounting ports the base can attach to. |
+| `--random-evals` | NFE for random search (default: `ga_pop * ga_gen`). |
+| `--ga-pop`, `--ga-gen` | GA population size / generations (also PPO's `epochs`/`mini_batch_size`). |
+| `--seed` | RNG seed. |
+| `--methods` | Any subset of `random_search genetic_algorithm ppo` (default: all three). |
+| `--output-root` | See `Session`, above. |
+| `--json` | One JSON line on stdout; everything else goes to stderr, so stdout is safe to parse directly. |
 
 ## Extending
 
@@ -154,7 +192,8 @@ Key parameters (see `main()` in `main.py`):
   `@register_metric("name")` in a module under `evaluation/`, and it's picked up by
   `compute_all_metrics()` automatically.
 - **New optimizer**: implement `run_x(problem, session=None, **kwargs)` returning the
-  shared result dict, then add an `OptimizationMethod(...)` entry in `main.py`.
+  shared result dict, then add it to `_build_methods()` in
+  `run.py`.
 - **New catalog**: any JSON catalog works as long as entries carry torque, weight, and
   cost; `load_catalog()` filters out anything missing those.
 

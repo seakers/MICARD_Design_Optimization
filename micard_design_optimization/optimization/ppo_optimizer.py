@@ -8,13 +8,13 @@ still runs random search + GA without it. Returns the shared optimizer contract 
 """
 import numpy as np
 
-from utils.pareto import pareto_progress
+from micard_design_optimization.utils.pareto import pareto_progress
 
 
 def run_ppo_optimization(problem, epochs=40, mini_batch_size=32,
                          params=None, rng=None, session=None):
     import torch  # local import keeps torch optional
-    from optimization.ppo_architecture import Actor, Critic
+    from micard_design_optimization.optimization.ppo_architecture import Actor, Critic
 
     rng = rng or np.random.default_rng()
     params = params or {"learning_rate": 3e-4, "clip_ratio": 0.2,

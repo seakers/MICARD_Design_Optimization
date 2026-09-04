@@ -6,8 +6,8 @@ manipulability) [user].
 """
 import numpy as np
 
-from evaluation.base import register_metric
-from evaluation.kinematics import forward_kinematics
+from micard_design_optimization.evaluation.base import register_metric
+from micard_design_optimization.evaluation.kinematics import forward_kinematics
 
 
 @register_metric("reachability")

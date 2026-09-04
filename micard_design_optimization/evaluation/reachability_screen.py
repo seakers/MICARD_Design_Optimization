@@ -9,9 +9,9 @@ platform's connection ports and the ORU pickup location [9].
 import numpy as np
 from xml.etree import ElementTree as ET
 
-from outputs.urdf_export import design_to_urdf, design_to_srdf
-from utils.metrics_client import MetricsClient
-from evaluation.conditioning import CONDITIONING_CONFIG
+from micard_design_optimization.outputs.urdf_export import design_to_urdf, design_to_srdf
+from micard_design_optimization.utils.metrics_client import MetricsClient
+from micard_design_optimization.evaluation.conditioning import CONDITIONING_CONFIG
 
 
 # --- Editable scenario config (platform 1.4m x 0.875m, 6 ports + 1 side) [9] ---

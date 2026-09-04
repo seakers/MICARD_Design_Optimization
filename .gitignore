@@ -11,6 +11,9 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+*.egg-info/
+build/
+dist/
 
 # Node/browser tooling caches if used for visualization checks
 node_modules/
