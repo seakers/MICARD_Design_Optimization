@@ -122,7 +122,8 @@ without touching the optimizers:
 - `outputs/visualization.py` — 3D viewer render, per-method Pareto plot, and the
   cross-method hypervolume comparison plot.
 - `utils/session.py` — a `Session` creates a timestamped folder
-  (`designs/<session_id>/`) with subfolders for every traceability artifact:
+  (`<output_root>/<session_id>/`, default `output_root="designs"`) with subfolders for
+  every traceability artifact:
   `designs/` (`save_design`), `intermediate/` (`log_intermediate`, used for
   per-design objectives, GA/PPO training curves, reachability reports, run config),
   `prompts/` and `responses/` (`log_prompt` / `log_response`, for any LLM-in-the-loop
@@ -135,18 +136,22 @@ without touching the optimizers:
 
 ```bash
 python main.py
+python main.py --json               # one JSON line on stdout (run()'s result) instead of a summary
 ```
 
-Key parameters (see `main()` in `main.py`):
+Key parameters (see `run()` in `main.py`):
 
-| Arg | Meaning |
+| Flag | Meaning |
 |---|---|
-| `catalog_path` | Path to the component catalog JSON. |
-| `max_joints` | Max DoF an arm can have (gene vector length). |
-| `n_ports` | Platform mounting ports the base can attach to. |
-| `random_evals` | NFE for random search (defaults to `ga_pop * ga_gen` for a fair comparison). |
-| `ga_pop`, `ga_gen` | GA population size / generations (also reused as PPO `epochs`/`mini_batch_size`). |
-| `seed` | RNG seed for reproducibility. |
+| `--catalog-path` | Path to the component catalog JSON. |
+| `--max-joints` | Max DoF an arm can have (gene vector length). |
+| `--n-ports` | Platform mounting ports the base can attach to. |
+| `--random-evals` | NFE for random search (defaults to `ga_pop * ga_gen` for a fair comparison). |
+| `--ga-pop`, `--ga-gen` | GA population size / generations (also reused as PPO `epochs`/`mini_batch_size`). |
+| `--seed` | RNG seed for reproducibility. |
+| `--no-random-search`, `--no-genetic-algorithm`, `--no-ppo` | Skip that method (default: all three run). |
+| `--output-root` | Where the session folder is created (default: `designs`; see `Session`, above). |
+| `--json` | Print `run()`'s result as one JSON line on stdout instead of a human-readable summary. |
 
 ## Extending
 
@@ -154,7 +159,8 @@ Key parameters (see `main()` in `main.py`):
   `@register_metric("name")` in a module under `evaluation/`, and it's picked up by
   `compute_all_metrics()` automatically.
 - **New optimizer**: implement `run_x(problem, session=None, **kwargs)` returning the
-  shared result dict, then add an `OptimizationMethod(...)` entry in `main.py`.
+  shared result dict, then add it to the `method_objs` list (and a corresponding
+  enable/disable param) in `run()`, `main.py`.
 - **New catalog**: any JSON catalog works as long as entries carry torque, weight, and
   cost; `load_catalog()` filters out anything missing those.
 
