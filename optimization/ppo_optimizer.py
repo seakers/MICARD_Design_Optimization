@@ -12,7 +12,7 @@ from utils.pareto import pareto_progress
 
 
 def run_ppo_optimization(problem, epochs=40, mini_batch_size=32,
-                         params=None, rng=None, session=None):
+                         params=None, rng=None, session=None, max_values=None):
     import torch  # local import keeps torch optional
     from optimization.ppo_architecture import Actor, Critic
 
@@ -38,7 +38,7 @@ def run_ppo_optimization(problem, epochs=40, mini_batch_size=32,
         """Weighted-sum reward [4][2]; graded penalty for infeasibility [4]."""
         obj = np.array(objectives, dtype=float)
         # Flip minimization objectives to "higher is better" for the weighted sum.
-        signed = np.where(min_mask, -obj, obj)
+        signed = np.where(min_mask, 1-obj, obj)
         reward = float(np.dot(weights, signed))
         if is_constrained:
             reward -= params["constraint_penalty"] * total_violation  # gradient toward feasible
@@ -54,8 +54,9 @@ def run_ppo_optimization(problem, epochs=40, mini_batch_size=32,
 
             genes, log_prob = actor.sample_action(w)
             objectives, is_constrained, cvals = problem.evaluate(genes)
-            total_violation = float(np.sum(cvals))
-            reward = scalar_reward(objectives, is_constrained,
+            total_violation = float(np.mean(cvals))
+            norm_objectives = objectives / max_values if max_values is not None else objectives
+            reward = scalar_reward(norm_objectives, is_constrained,
                                    total_violation, w)
 
             batch_weights.append(w)
@@ -112,7 +113,7 @@ def run_ppo_optimization(problem, epochs=40, mini_batch_size=32,
     all_constraints = np.array(all_constraints)
 
     pareto_front_obj, hypervolumes = pareto_progress(
-        all_obj, all_constraints, problem.objective_min_max
+        all_obj, all_constraints, problem.objective_min_max, max_values=max_values
     )
 
     n_valid = int(np.sum(all_constraints == False))

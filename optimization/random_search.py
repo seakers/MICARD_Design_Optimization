@@ -9,7 +9,7 @@ import numpy as np
 from utils.pareto import pareto_progress
 
 
-def run_random_search(problem, num_exec=2000, rng=None, session=None):
+def run_random_search(problem, num_exec=2000, rng=None, session=None, max_values=None):
     """Sample num_exec designs, evaluating each via problem.evaluate() [random_search 5].
 
     Args:
@@ -60,9 +60,11 @@ def run_random_search(problem, num_exec=2000, rng=None, session=None):
     all_obj = np.array(all_obj)
     all_constraints = np.array(all_constraints)
 
+    max_values = np.max(all_obj, axis=0) * 1.1 + 1e-6  # avoid div-by-zero [random_search 5]
+
     # Custom Pareto + hypervolume (replaces pymoo HV) [random_search 5][utils.pareto].
     pareto_front_obj, hypervolumes = pareto_progress(
-        all_obj, all_constraints, objective_min_max
+        all_obj, all_constraints, objective_min_max, max_values=max_values
     )
 
     n_valid = int(np.sum(all_constraints == False))
@@ -75,4 +77,5 @@ def run_random_search(problem, num_exec=2000, rng=None, session=None):
         "pareto_front_obj": pareto_front_obj,
         "hypervolumes": hypervolumes,
         "num_objectives": num_objectives,
+        "max_values": max_values,
     }

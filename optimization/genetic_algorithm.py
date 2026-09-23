@@ -106,7 +106,7 @@ def _mutate(genes, gene_space, rng, rate=0.1):
     return child
 
 
-def run_genetic_algorithm(problem, pop_size=50, n_gen=40, rng=None, session=None):
+def run_genetic_algorithm(problem, pop_size=50, n_gen=40, rng=None, session=None, max_values=None):
     """Run the custom NSGA-II GA on the fixed-length gene space.
 
     Args mirror the reference GA's pop_size / n_gen roles [genetic_algorithm 3].
@@ -192,7 +192,7 @@ def run_genetic_algorithm(problem, pop_size=50, n_gen=40, rng=None, session=None
     all_obj = np.array(all_obj)
     all_constraints = np.array(all_constraints)
     pareto_front_obj, hypervolumes = pareto_progress(
-        all_obj, all_constraints, objective_min_max
+        all_obj, all_constraints, objective_min_max, max_values=max_values
     )
 
     return {

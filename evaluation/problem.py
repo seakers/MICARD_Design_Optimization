@@ -47,18 +47,27 @@ class RobotArmProblem:
 
     def _constraint_vals(self, design, metrics):
         """Graded violations: 0.0 = satisfied, positive = distance to feasible [4]."""
-        # Mass: kg over the launch budget.
-        mass_viol = max(0.0, metrics.get("weight", np.inf) - self.max_mass_kg)
+        # Normalize each violation to [0, 1].
+        # Mass: normalized excess over the launch budget.
+        mass_viol = np.clip(
+            max(0.0, metrics.get("weight", np.inf) - self.max_mass_kg)
+            / max(self.max_mass_kg, self.feasibility_tol),
+            0.0, 1.0,
+        )
 
         # Structural: summed normalized overrun of deflection + bending stress.
         # min_yield_margin < 0 means stress exceeded the allowable; deflection
         # overrun uses the worst link ratio vs. the 1% limit used in structural.py.
         yield_overrun = max(0.0, -metrics.get("min_yield_margin", 1.0))
         defl_overrun = max(0.0, metrics.get("max_deflection_ratio", 0.0) - 0.01)
-        struct_viol = yield_overrun + defl_overrun
+        struct_viol = np.clip(yield_overrun + defl_overrun, 0.0, 1.0)
 
-        # Reach: meters short of the required ORU-retrieval reach [9].
-        reach_viol = max(0.0, self.required_reach_m - metrics.get("abs_reach_m", 0.0))
+        # Reach: normalized distance short of the required ORU-retrieval reach [9].
+        reach_viol = np.clip(
+            max(0.0, self.required_reach_m - metrics.get("abs_reach_m", 0.0))
+            / max(self.required_reach_m, self.feasibility_tol),
+            0.0, 1.0,
+        )
 
         # DOF: a design with no joints has no meaningful gradient; flat flag.
         dof_viol = 0.0 if design.dof > 0 else 1.0

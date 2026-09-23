@@ -384,42 +384,36 @@ Plotly.newPlot('plot', [dominated, pareto], layout, { responsive: true });
 """
 
 def export_hypervolume_plot(storage, out_dir, name="hypervolume_comparison"):
-    """Plot hypervolume vs. evaluations for each optimizer method.
+    """Plot median hypervolume with an IQR band across independent runs, per method.
 
-    Consumes the 'hypervolumes' history every optimizer returns (the per-NFE
-    Pareto-progress list) [random_search 5][genetic_algorithm 3][design_repair 2],
-    and overlays one line per method for direct comparison, echoing the
-    reference main.py's hypervolume-comparison plot [main 8]. Written as a
-    self-contained interactive HTML (Plotly via CDN) so it needs no extra
-    Python dependency and opens in any browser [MICARD 3.0.6].
-
-    Args:
-        storage: {method_name: results_dict}, where each results_dict has a
-                 'hypervolumes' list (from the optimizer return contract).
-        out_dir: directory to write the HTML into.
-        name: output file stem.
+    Consumes storage[method]["all_runs_hypervolumes"] (one per-NFE HV history
+    per run) and overlays median + interquartile band, echoing the reference
+    median/IQR hypervolume plot [2]. Self-contained interactive HTML via CDN.
     """
     from pathlib import Path
+    import numpy as np
 
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     series = []
     for method_name, results in storage.items():
-        hv = list(results.get("hypervolumes", []))
-        if not hv:
+        runs = [list(r) for r in results.get("all_runs_hypervolumes", []) if len(r)]
+        if not runs:
             continue
+        min_len = min(len(r) for r in runs)                 # align to shortest run
+        mat = np.array([r[:min_len] for r in runs], dtype=float)
+
         series.append({
             "name": method_name,
-            "x": list(range(1, len(hv) + 1)),  # evaluations (NFE)
-            "y": hv,
+            "x": list(range(1, min_len + 1)),
+            "median": np.median(mat, axis=0).tolist(),
+            "q25": np.percentile(mat, 25, axis=0).tolist(),
+            "q75": np.percentile(mat, 75, axis=0).tolist(),
         })
 
-    data = {"series": series, "title": name}
-    payload = json.dumps(data)
-
-    html_text = _HYPERVOLUME_HTML.replace("__DATA_JSON__", payload)\
-                                 .replace("__TITLE__", name)
+    payload = json.dumps({"series": series, "title": name})
+    html_text = _HYPERVOLUME_HTML.replace("__DATA_JSON__", payload).replace("__TITLE__", name)
     html_path = out_dir / f"{name}.html"
     html_path.write_text(html_text, encoding="utf-8")
     return html_path
@@ -441,11 +435,29 @@ body { margin: 0; font-family: Arial, sans-serif; background: #edf2f6; color: #1
 <div id="plot"></div>
 <script>
 const data = __DATA_JSON__;
-const traces = data.series.map(s => ({
-  type: 'scatter', mode: 'lines', name: s.name, x: s.x, y: s.y
-}));
+const palette = ['#1f6fe5', '#2ca02c', '#d62728', '#9467bd', '#ff7f0e'];
+function hexToRgba(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`;
+}
+const traces = [];
+data.series.forEach((s, k) => {
+  const color = palette[k % palette.length];
+  const xRev = s.x.slice().reverse();
+  const q75Rev = s.q75.slice().reverse();
+  traces.push({                       // IQR band
+    type: 'scatter', mode: 'lines', name: s.name + ' IQR',
+    x: s.x.concat(xRev), y: s.q25.concat(q75Rev),
+    fill: 'toself', fillcolor: hexToRgba(color, 0.15),
+    line: { width: 0 }, hoverinfo: 'skip', showlegend: false
+  });
+  traces.push({                       // median line
+    type: 'scatter', mode: 'lines', name: s.name,
+    x: s.x, y: s.median, line: { color: color, width: 2 }
+  });
+});
 const layout = {
-  title: 'Hypervolume vs. Evaluations',
+  title: 'Hypervolume vs. Evaluations (median & IQR)',
   xaxis: { title: 'Evaluations (NFE)' },
   yaxis: { title: 'Hypervolume' },
   margin: { l: 60, r: 20, t: 50, b: 50 }

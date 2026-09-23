@@ -183,28 +183,58 @@ class Actor(nn.Module):
 
 
 class Critic(nn.Module):
-    """Value network conditioned on the weight vector (scalar value) [6][7]."""
+    """Transformer critic over the emitted design.
 
-    def __init__(self, device, params, num_objectives):
+    Predicts a per-objective value vector PLUS the total violation via a
+    last-token readout [2]. Scalarization with the weight vector (and the
+    constraint penalty) happens OUTSIDE the model [2][3].
+    """
+
+    def __init__(self, device, params, num_genes, num_objectives):
         super().__init__()
         self.device = device
-        self.net = nn.Sequential(
-            nn.Linear(num_objectives, 64), nn.ReLU(),
-            nn.Linear(64, 64), nn.ReLU(),
-            nn.Linear(64, 1))
+        self.num_genes = num_genes
+        self.num_objectives = num_objectives
+        self.out_dim = num_objectives + 1          # + total violation [2][3]
+        self.dense_dim = params.get("dense_dim", 64)
+        self.num_layers = params.get("num_layers", 2)
+
+        self.encoder = nn.Linear(1, self.dense_dim)
+        self.positional_encoding = PositionalEncoding(self.dense_dim)
+        self.transformer_decoder = CustomTransformerDecoder(
+            d_model=self.dense_dim, num_layers=self.num_layers,
+            dim_feedforward=self.dense_dim, dropout=0.1)
+        self.output_layer = nn.Linear(self.dense_dim, self.out_dim)  # [2]
+
         self.optimizer = torch.optim.Adam(self.parameters(),
                                           lr=params["learning_rate"])
+        self.scheduler = torch.optim.lr_scheduler.StepLR(
+            self.optimizer, step_size=1000, gamma=0.9)
 
-    def value(self, weights):
-        w = torch.tensor(weights, dtype=torch.float32, device=self.device)
-        return self.net(w).squeeze(-1)
+    def forward(self, design):
+        x = torch.as_tensor(design, dtype=torch.float32, device=self.device)
+        if x.dim() == 1:
+            x = x.unsqueeze(0)
+        x = x.unsqueeze(-1)                          # [batch, num_genes, 1]
+        x = self.encoder(x)
+        x = self.positional_encoding(x.transpose(0, 1)).transpose(0, 1)
+        x = self.transformer_decoder(x)              # [batch, num_genes, dense_dim]
+        x = self.output_layer(x)                     # [batch, num_genes, num_objectives]
+        return x[:, -1, :]                           # last-token readout [2]
 
-    def ppo_update(self, weights_batch, returns):
+    def value(self, design):
+        with torch.no_grad():
+            return self.forward(design).squeeze(0)   # [num_objectives]
+
+    def ppo_update(self, designs_batch, targets_batch):
+        """MSE against realized per-objective vector; scalarization is external [2][3]."""
         self.optimizer.zero_grad()
-        w = torch.tensor(np.array(weights_batch), dtype=torch.float32,
-                         device=self.device)
-        r = torch.tensor(returns, dtype=torch.float32, device=self.device)
-        loss = F.mse_loss(self.net(w).squeeze(-1), r)
+        preds = self.forward(np.array(designs_batch))
+        targets = torch.as_tensor(np.array(targets_batch), dtype=torch.float32,
+                                  device=self.device)
+        loss = F.mse_loss(preds, targets)
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.parameters(), 1.0)
         self.optimizer.step()
+        self.scheduler.step()
         return loss.item()

@@ -1,12 +1,13 @@
 """Custom Pareto-front and hypervolume utilities (no pymoo dependency).
 
 Drop-in replacement for the is_pareto_efficient + HV(ref_point) pattern used
-throughout the reference optimizers [genetic_algorithm 3][random_search 5].
-Inputs to `hypervolume` are expected to be normalized to minimization against
-a unit reference point, matching the existing convention [design_repair 2].
+throughout the reference optimizers. Inputs to `hypervolume` are expected to be
+normalized to minimization against a unit reference point, matching the
+existing convention.
 """
 from copy import deepcopy
 import numpy as np
+from bisect import bisect_left, insort
 
 
 def is_pareto_efficient(points, return_mask=True):
@@ -36,11 +37,99 @@ def is_pareto_efficient(points, return_mask=True):
     return is_efficient
 
 
+def _hv2d(points, ref_point):
+    """Exact 2D hypervolume (minimization) via a single sorted sweep. O(n log n).
+
+    Sort by objective 0 ascending, sweep objective 1. Accumulate rectangle
+    area only when a point improves the second axis (i.e., lies on the
+    staircase). Handles arbitrary (non-Pareto-filtered) input correctly.
+    """
+    pts = points[np.all(points < ref_point, axis=1)]
+    if pts.shape[0] == 0:
+        return 0.0
+    order = np.argsort(pts[:, 0])
+    pts = pts[order]
+    area = 0.0
+    prev_x = ref_point[0]
+    best_y = ref_point[1]
+    for x, y in pts:
+        if y < best_y:
+            area += (prev_x - x) * (ref_point[1] - y)
+            prev_x = x
+            best_y = y
+    return float(area)
+
+
+def _hv3d(points, ref_point):
+    """Exact 3D hypervolume (minimization) via an O(n log n) dimension sweep.
+
+    Sweep along objective 0 (z), from best (lowest) to worst. Maintain the 2D
+    dominated area of the projection onto objectives (1, 2) incrementally in a
+    sorted staircase. Between consecutive z-values we add a slab whose height
+    is the z-interval and whose base is the *current* dominated 2D area.
+
+    The staircase is a plain Python list of (x, y) kept sorted by x ascending,
+    with y strictly decreasing along it. Sentinels bound the structure so
+    neighbor lookups never fall off the ends. Uses only the stdlib `bisect`
+    module (no third-party dependency).
+    """
+    pts = points[np.all(points < ref_point, axis=1)]
+    if pts.shape[0] == 0:
+        return 0.0
+
+    x_ref, y_ref, z_ref = ref_point[0], ref_point[1], ref_point[2]
+
+    # Sweep by the first objective (call it z) ascending: best z first.
+    order = np.argsort(pts[:, 0])
+    pts = pts[order]
+
+    # 2D staircase in the (objective1=x, objective2=y) plane, minimization.
+    # Sorted by x ascending; on the front, y strictly decreases as x increases.
+    # Sentinels (-inf, y_ref) and (x_ref, -inf) bound neighbor lookups.
+    front = [(-np.inf, y_ref), (x_ref, -np.inf)]
+    area = 0.0
+    volume = 0.0
+    prev_z = pts[0, 0]
+
+    for z, x, y in pts:
+        # Slab from prev_z up to current z uses the area accumulated so far.
+        volume += area * (z - prev_z)
+        prev_z = z
+
+        # Position of x in the staircase.
+        i = bisect_left(front, (x, -np.inf))
+
+        # If the left neighbor already has y' <= y, the new (x, y) is dominated
+        # in the projected plane and contributes no new area.
+        if front[i - 1][1] <= y:
+            continue
+
+        # Remove points strictly dominated by (x, y): those with x' >= x and
+        # y' >= y sit immediately to the right. Subtract their area strips.
+        while front[i][1] >= y:
+            rx, ry = front[i]
+            left_y = front[i - 1][1]
+            right_x = front[i + 1][0]
+            area -= (right_x - rx) * (left_y - ry)
+            del front[i]
+
+        # Insert (x, y) and add its exposed rectangle: width to the right
+        # neighbor, height up to the left neighbor's y.
+        left_y = front[i - 1][1]
+        right_x = front[i][0]
+        area += (right_x - x) * (left_y - y)
+        insort(front, (x, y))
+
+    # Final slab from the last (largest) z out to the reference.
+    volume += area * (z_ref - prev_z)
+    return float(volume)
+
+
 def _hv_recursive(points, ref_point):
     """Exact hypervolume for minimization via dimension sweep.
 
-    Fast and exact for the 2-3 objectives used here. Generalizes to higher
-    dimensions if ever needed, at increasing cost.
+    Fast/exact specializations for 1-3 objectives (the range used here);
+    recurses along the first axis for m >= 4 if ever needed.
     """
     points = np.asarray(points, dtype=float)
     if points.size == 0:
@@ -57,34 +146,22 @@ def _hv_recursive(points, ref_point):
         return float(ref_point[0] - np.min(points[:, 0]))
 
     if m == 2:
-        # Sort by first objective ascending, sweep the second.
-        order = np.argsort(points[:, 0])
-        pts = points[order]
-        volume = 0.0
-        prev_x = ref_point[0]
-        best_y = ref_point[1]
-        # Walk from best (lowest) x outward.
-        for x, y in pts:
-            if y < best_y:
-                volume += (prev_x - x) * (ref_point[1] - y)
-                prev_x = x
-                best_y = y
-        return float(volume)
+        return _hv2d(points, ref_point)
 
-    # General case (m >= 3): recurse by slicing along the first axis.
+    if m == 3:
+        return _hv3d(points, ref_point)
+
+    # General case (m >= 4): recurse by slicing along the first axis.
     order = np.argsort(points[:, 0])
     pts = points[order]
     volume = 0.0
-    prev_x = ref_point[0]
-    for i, x in enumerate(pts[:, 0]):
-        # Slab thickness along axis 0 from this point out to the previous slice.
-        slab = prev_x - x
-        if slab > 0:
-            # Project remaining points (those with x <= current) onto lower dims.
-            slice_pts = pts[: i + 1, 1:]
-            base_area = _hv_recursive(slice_pts, ref_point[1:])
-            volume += slab * base_area
+    prev_x = pts[0, 0]
+    for i in range(len(pts)):
+        x = pts[i, 0]
+        volume += _hv_recursive(pts[: i + 1, 1:], ref_point[1:]) * (x - prev_x)
         prev_x = x
+    # Final slab to the reference along the first axis.
+    volume += _hv_recursive(pts[:, 1:], ref_point[1:]) * (ref_point[0] - prev_x)
     return float(volume)
 
 
@@ -93,7 +170,7 @@ def hypervolume(front_points, ref_point):
 
     Args:
         front_points: (k, m) array already normalized to minimization.
-        ref_point: (m,) reference point (typically np.ones(m)) [genetic_algorithm 3].
+        ref_point: (m,) reference point (typically np.ones(m)).
     """
     front_points = np.asarray(front_points, dtype=float)
     if front_points.ndim == 1:
@@ -107,26 +184,26 @@ def normalize_objectives(all_obj, objective_min_max, max_values=None):
     """Normalize + flip-to-minimization, matching the reference convention.
 
     Divides by max_values and applies (1 - norm) for 'max' objectives so the
-    result is minimization against a unit reference point [random_search 5].
+    result is minimization against a unit reference point.
 
     Args:
         all_obj: (n, m) raw objective array.
         objective_min_max: list of 'min'/'max' per objective.
         max_values: optional (m,) normalizer. If None, derived from the data
-                    as max * 1.1 + 1e-6 (the random-search fallback [5]).
+                    as max * 1.1 + 1e-6.
 
     Returns:
         (hv_obj, max_values) where hv_obj is minimization-normalized.
     """
     all_obj = np.asarray(all_obj, dtype=float)
     if max_values is None:
-        max_values = np.max(all_obj, axis=0) * 1.1 + 1e-6  # avoid div-by-zero [5]
+        max_values = np.max(all_obj, axis=0) * 1.1 + 1e-6  # avoid div-by-zero
 
     norm_obj = all_obj / max_values
     hv_obj = deepcopy(norm_obj)
     for i, mm in enumerate(objective_min_max):
         if mm.lower() == "max":
-            hv_obj[:, i] = 1.0 - norm_obj[:, i]  # flip maximization [3][5]
+            hv_obj[:, i] = 1.0 - norm_obj[:, i]  # flip maximization
     return hv_obj, max_values
 
 
@@ -136,7 +213,7 @@ def pareto_progress(all_obj, all_constraints, objective_min_max,
 
     Mirrors calculate_pareto_progress / the post-processing loop in the
     reference optimizers, including infeasible-design handling and carrying
-    the last hypervolume forward when no improvement occurs [design_repair 2][3][5].
+    the last hypervolume forward when no improvement occurs.
     """
     all_obj = np.asarray(all_obj, dtype=float).copy()
     all_constraints = np.asarray(all_constraints, dtype=bool)
@@ -146,7 +223,7 @@ def pareto_progress(all_obj, all_constraints, objective_min_max,
     if ref_point is None:
         ref_point = np.ones(num_objectives)
 
-    # Map infeasible designs to the reference point (max for min-objs, 0 for max-objs) [3][5].
+    # Map infeasible designs to the reference point (max for min-objs, 0 for max-objs).
     hv_obj_tmp, max_values = normalize_objectives(
         np.where(all_constraints[:, None], 0.0, all_obj), objective_min_max, max_values
     )

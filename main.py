@@ -106,55 +106,77 @@ def export_top_designs(method_name, results, design_space, session,
 
 
 def main(catalog_path="utils/dynamixel_single_axis.json",
-         max_joints=6, n_ports=7,
-         random_evals=None, ga_pop=100, ga_gen=16,
-         seed=None):
-    """Run one MICARD design-exploration session end to end."""
-    rng = np.random.default_rng(seed)
-
-    random_evals = ga_pop * ga_gen if random_evals is None else random_evals
-
-    # 1. Session with datestring ID + traceability folders [MICARD 5.0].
+         max_joints=8, n_ports=7,
+         random_evals=None, ga_pop=5, ga_gen=4,
+         num_runs=5):
+    """Run several independent MICARD design-exploration runs end to end."""
     session = Session()
     print(f"Session: {session.session_id}")
     session.log_intermediate("run_config", {
         "catalog_path": catalog_path, "max_joints": max_joints,
         "n_ports": n_ports, "random_evals": random_evals,
-        "ga_pop": ga_pop, "ga_gen": ga_gen, "seed": seed,
+        "ga_pop": ga_pop, "ga_gen": ga_gen, "num_runs": num_runs,
     })
 
-    # 2. Load catalog generically; drop entries missing torque/weight/cost [MICARD 2.0][1].
-    catalog = load_catalog(catalog_path)
-
-    # 3. Build design space + problem. 7 ports match the platform scenario [MICARD scenario].
-    design_space = DesignSpace(catalog, max_joints=max_joints, n_ports=n_ports)
+    catalog = load_catalog(catalog_path)                    # [1]
+    design_space = DesignSpace(catalog, max_joints=max_joints, n_ports=n_ports)  # [1]
     problem = RobotArmProblem(design_space)
+    random_evals = ga_pop * ga_gen if random_evals is None else random_evals
 
-    # 4. Interchangeable optimizers [main 8]. GA is custom (no pygad/pymoo) [3][user].
     methods = [
         OptimizationMethod("Random Search", run_random_search, "blue",
-                        {"num_exec": random_evals, "rng": rng}),
+                           {"num_exec": random_evals}),
         OptimizationMethod("Genetic Algorithm", run_genetic_algorithm, "green",
-                        {"pop_size": ga_pop, "n_gen": ga_gen, "rng": rng}),
+                           {"pop_size": ga_pop, "n_gen": ga_gen}),
         OptimizationMethod("PPO", run_ppo_optimization, "red",
-                        {"epochs": ga_pop, "mini_batch_size": ga_gen, "rng": rng}),
+                           {"epochs": ga_pop, "mini_batch_size": ga_gen}),
     ]
 
-    storage = initialize_storage(methods)
+    # Per-run storage, echoing the reference all_runs_* buckets [2].
+    storage = {m.name: {
+        "all_runs_hypervolumes": [],
+        "all_runs_obj": [],
+        "all_runs_des": [],
+        "all_runs_constraints": [],
+    } for m in methods}
+
+    max_values = None  # shared normalization, derived once from Random Search [2]
+
     for method in methods:
-        results = run_method(method, problem, session)
-        store_results(storage, method.name, results)
-        n_valid = int(np.sum(~np.asarray(results["all_constraints"], dtype=bool)))
-        final_hv = results["hypervolumes"][-1] if results["hypervolumes"] else 0.0
-        print(f"{method.name}: {n_valid} feasible, final hypervolume {final_hv:.4f}")
+        print(f"\n=== Running {method.name} ===")
+
+        for run_idx in range(num_runs):
+            print(f"\n########## RUN {run_idx + 1}/{num_runs} ##########")
+            rng = np.random.default_rng()  # no fixed seeding, per your request
+
+            kwargs = dict(method.kwargs, rng=rng, max_values=max_values)
+            results = method.runner(problem, session=session, **kwargs)
+
+            # Random Search sets the normalization for everyone else [2].
+            if method.name == "Random Search":
+                run_max_values = results.get("max_values")
+                if max_values is None:
+                    max_values = run_max_values
+                elif run_max_values is not None:
+                    max_values = np.maximum(max_values, run_max_values)
+
+            storage[method.name]["all_runs_hypervolumes"].append(results["hypervolumes"])
+            storage[method.name]["all_runs_obj"].append(results["all_obj"])
+            storage[method.name]["all_runs_des"].append(results["all_des"])
+            storage[method.name]["all_runs_constraints"].append(results["all_constraints"])
+
+            n_valid = int(np.sum(~np.asarray(results["all_constraints"], dtype=bool)))
+            final_hv = results["hypervolumes"][-1] if results["hypervolumes"] else 0.0
+            print(f"{method.name} run {run_idx}: {n_valid} feasible, final HV {final_hv:.4f}")
+
+            export_top_designs(f"{method.name}_run{run_idx}",
+                               {"all_des": results["all_des"],
+                                "all_obj": results["all_obj"],
+                                "all_constraints": results["all_constraints"]},
+                               design_space, session)
 
     hv_path = export_hypervolume_plot(storage, session.dirs["outputs"])
-    print(f"Hypervolume comparison: {hv_path}")
-
-    # 5. Export deliverables for the top designs from each method [MICARD 4.0].
-    for method in methods:
-        export_top_designs(method.name, storage[method.name],
-                           design_space, session)
+    print(f"Hypervolume comparison (median/IQR): {hv_path}")
 
     print(f"\nDone. All artifacts under: {session.root}")
     return session, storage
