@@ -24,7 +24,7 @@ def run_random_search(problem, num_exec=2000, rng=None, session=None, max_values
 
     all_des, all_obj = [], []
     all_constraints, all_constraint_vals = [], []
-    all_metrics = []
+    all_metrics, all_design_ids = [], []
 
     for run in range(num_exec):
         # Walk the (possibly dynamic) design space [random_search 5].
@@ -52,9 +52,11 @@ def run_random_search(problem, num_exec=2000, rng=None, session=None, max_values
         all_constraints.append(is_constrained)
         all_constraint_vals.append(constraint_vals)
         all_metrics.append(metrics)
-
         if session and not is_constrained:
-            session.save_design(problem.last_design, algorithm="random_search")
+            design_id = session.save_design(problem.last_design, algorithm="random_search")
+            all_design_ids.append(design_id)
+        else:
+            all_design_ids.append(None)
 
         if run % max(1, num_exec // 10) == 0:
             print(f"Random search {run + 1}/{num_exec}")
@@ -78,6 +80,7 @@ def run_random_search(problem, num_exec=2000, rng=None, session=None, max_values
         "all_constraints": all_constraints,
         "all_constraint_vals": all_constraint_vals,
         "all_metrics": all_metrics,
+        "all_design_ids": all_design_ids,
         "pareto_front_obj": pareto_front_obj,
         "hypervolumes": hypervolumes,
         "num_objectives": num_objectives,

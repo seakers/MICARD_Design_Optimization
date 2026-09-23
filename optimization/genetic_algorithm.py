@@ -125,7 +125,7 @@ def run_genetic_algorithm(problem, pop_size=50, n_gen=40, rng=None, session=None
         return obj, is_constrained, constraint_vals, metrics
 
     population = _init_population(gene_space, pop_size, rng)
-    all_des, all_obj, all_constraints, all_constraint_vals, all_metrics = [], [], [], [], []
+    all_des, all_obj, all_constraints, all_constraint_vals, all_metrics, all_design_ids = [], [], [], [], [], []
 
     pop_obj = []
     for genes in population:
@@ -135,7 +135,10 @@ def run_genetic_algorithm(problem, pop_size=50, n_gen=40, rng=None, session=None
         all_constraints.append(con); all_constraint_vals.append(cvals)
         all_metrics.append(metrics)
         if session and not con:
-            session.save_design(problem.last_design, algorithm="genetic_algorithm")
+            design_id = session.save_design(problem.last_design, algorithm="genetic_algorithm")
+            all_design_ids.append(design_id)
+        else:
+            all_design_ids.append(None)
     pop_obj = np.array(pop_obj)
 
     for gen in range(n_gen):
@@ -164,7 +167,10 @@ def run_genetic_algorithm(problem, pop_size=50, n_gen=40, rng=None, session=None
             all_constraints.append(con); all_constraint_vals.append(cvals)
             all_metrics.append(metrics)
             if session and not con:
-                session.save_design(problem.last_design, algorithm="genetic_algorithm")
+                design_id = session.save_design(problem.last_design, algorithm="genetic_algorithm")
+                all_design_ids.append(design_id)
+            else:
+                all_design_ids.append(None)
         off_obj = np.array(off_obj)
 
         # --- Environmental selection (mu + lambda) ---
@@ -203,6 +209,7 @@ def run_genetic_algorithm(problem, pop_size=50, n_gen=40, rng=None, session=None
         "all_constraints": all_constraints,
         "all_constraint_vals": all_constraint_vals,
         "all_metrics": all_metrics,
+        "all_design_ids": all_design_ids,
         "pareto_front_obj": pareto_front_obj,
         "hypervolumes": hypervolumes,
         "num_objectives": problem.num_objectives,

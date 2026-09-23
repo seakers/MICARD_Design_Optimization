@@ -118,7 +118,7 @@ def append_design_points_csv(session, method, results, out_dir):
         for index, metric_vals in enumerate(results["all_metrics"]):
             writer.writerow({
                 "session_id": session.session_id,
-                "design_id": f"{method.key}_{index}",
+                "design_id": results["all_design_ids"][index],
                 **{name: metric_vals[name] for name in metric_names if name in metric_vals},
             })
 

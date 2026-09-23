@@ -42,7 +42,7 @@ class Session:
         urdf_path, srdf_path = export_urdf(design, self.dirs["designs"], name)
         bom_json_path, bom_csv_path = export_bom(design, self.dirs["designs"], name)
         viewer_path = export_viewer(design, self.dirs["designs"], name)
-        return path
+        return name
 
     def log_prompt(self, text, meta=None):
         """Save a prompt sent to an LLM [5.0.2]."""

@@ -32,7 +32,7 @@ def run_ppo_optimization(problem, epochs=40, mini_batch_size=32,
 
     all_des, all_obj = [], []
     all_constraints, all_constraint_vals = [], []
-    all_metrics = []
+    all_metrics, all_design_ids = [], []
     all_actor_loss, all_critic_loss, all_kl, all_reward = [], [], [], []
 
     def scalar_reward(objectives, is_constrained, total_violation, weights):
@@ -74,7 +74,10 @@ def run_ppo_optimization(problem, epochs=40, mini_batch_size=32,
             all_constraint_vals.append(cvals)
             all_metrics.append(metrics)
             if session and not is_constrained:
-                session.save_design(problem.last_design, algorithm="ppo_design_synthesis")
+                design_id = session.save_design(problem.last_design, algorithm="random_search")
+                all_design_ids.append(design_id)
+            else:
+                all_design_ids.append(None)
 
         # Advantages = reward - scalarized critic prediction over the design [3][user].
         values = []
@@ -145,6 +148,7 @@ def run_ppo_optimization(problem, epochs=40, mini_batch_size=32,
         "all_constraints": all_constraints,
         "all_constraint_vals": all_constraint_vals,
         "all_metrics": all_metrics,
+        "all_design_ids": all_design_ids,
         "pareto_front_obj": pareto_front_obj,
         "hypervolumes": hypervolumes,
         "num_objectives": num_objectives,
