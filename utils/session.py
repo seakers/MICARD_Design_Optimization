@@ -8,6 +8,10 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+from outputs.urdf_export import export_urdf
+from outputs.bom import export_bom
+from outputs.visualization import export_viewer
+
 
 class Session:
     def __init__(self, root="designs", session_id=None):
@@ -30,11 +34,14 @@ class Session:
     def _timestamp(self):
         return datetime.now().strftime("%H%M%S_%f")
 
-    def save_design(self, design, name=None):
+    def save_design(self, design, algorithm, name=None):
         """Persist a Design (complete or partial) for future reference [5.0.1]."""
         name = name or f"design_{self._timestamp()}"
         path = self.dirs["designs"] / f"{name}.json"
-        path.write_text(json.dumps(design.to_dict(), indent=2), encoding="utf-8")
+        path.write_text(json.dumps(design.to_dict(algorithm), indent=2), encoding="utf-8")
+        urdf_path, srdf_path = export_urdf(design, self.dirs["designs"], name)
+        bom_json_path, bom_csv_path = export_bom(design, self.dirs["designs"], name)
+        viewer_path = export_viewer(design, self.dirs["designs"], name)
         return path
 
     def log_prompt(self, text, meta=None):

@@ -94,4 +94,4 @@ class RobotArmProblem:
         metrics["total_violation"] = total_violation
 
         self.last_design = design
-        return objectives, is_constrained, constraint_vals
+        return objectives, is_constrained, constraint_vals, metrics

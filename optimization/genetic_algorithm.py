@@ -117,24 +117,25 @@ def run_genetic_algorithm(problem, pop_size=50, n_gen=40, rng=None, session=None
     min_mask = np.array([mm.lower() == "min" for mm in objective_min_max])
 
     def evaluate(genes):
-        objectives, is_constrained, constraint_vals = problem.evaluate(genes)
+        objectives, is_constrained, constraint_vals, metrics = problem.evaluate(genes)
         # Penalize infeasible designs so they sort to the back [genetic_algorithm 3].
         obj = np.array(objectives, dtype=float)
         if is_constrained:
             obj = np.array(objectives) + np.sum(constraint_vals)
-        return obj, is_constrained, constraint_vals
+        return obj, is_constrained, constraint_vals, metrics
 
     population = _init_population(gene_space, pop_size, rng)
-    all_des, all_obj, all_constraints, all_constraint_vals = [], [], [], []
+    all_des, all_obj, all_constraints, all_constraint_vals, all_metrics = [], [], [], [], []
 
     pop_obj = []
     for genes in population:
-        obj, con, cvals = evaluate(genes)
+        obj, con, cvals, metrics = evaluate(genes)
         pop_obj.append(obj)
         all_des.append(genes); all_obj.append(obj)
         all_constraints.append(con); all_constraint_vals.append(cvals)
+        all_metrics.append(metrics)
         if session and not con:
-            session.save_design(problem.last_design)
+            session.save_design(problem.last_design, algorithm="genetic_algorithm")
     pop_obj = np.array(pop_obj)
 
     for gen in range(n_gen):
@@ -157,12 +158,13 @@ def run_genetic_algorithm(problem, pop_size=50, n_gen=40, rng=None, session=None
 
         off_obj = []
         for genes in offspring:
-            obj, con, cvals = evaluate(genes)
+            obj, con, cvals, metrics = evaluate(genes)
             off_obj.append(obj)
             all_des.append(genes); all_obj.append(obj)
             all_constraints.append(con); all_constraint_vals.append(cvals)
+            all_metrics.append(metrics)
             if session and not con:
-                session.save_design(problem.last_design)
+                session.save_design(problem.last_design, algorithm="genetic_algorithm")
         off_obj = np.array(off_obj)
 
         # --- Environmental selection (mu + lambda) ---
@@ -199,6 +201,8 @@ def run_genetic_algorithm(problem, pop_size=50, n_gen=40, rng=None, session=None
         "all_des": all_des,
         "all_obj": all_obj,
         "all_constraints": all_constraints,
+        "all_constraint_vals": all_constraint_vals,
+        "all_metrics": all_metrics,
         "pareto_front_obj": pareto_front_obj,
         "hypervolumes": hypervolumes,
         "num_objectives": problem.num_objectives,

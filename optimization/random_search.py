@@ -24,6 +24,7 @@ def run_random_search(problem, num_exec=2000, rng=None, session=None, max_values
 
     all_des, all_obj = [], []
     all_constraints, all_constraint_vals = [], []
+    all_metrics = []
 
     for run in range(num_exec):
         # Walk the (possibly dynamic) design space [random_search 5].
@@ -45,14 +46,15 @@ def run_random_search(problem, num_exec=2000, rng=None, session=None, max_values
                 problem.choose_components(des_space[ind], current_context)
             ind += 1
 
-        objectives, is_constrained, constraint_vals = problem.evaluate(design)
+        objectives, is_constrained, constraint_vals, metrics = problem.evaluate(design)
         all_des.append(design)
         all_obj.append(objectives)
         all_constraints.append(is_constrained)
         all_constraint_vals.append(constraint_vals)
+        all_metrics.append(metrics)
 
         if session and not is_constrained:
-            session.save_design(problem.last_design)
+            session.save_design(problem.last_design, algorithm="random_search")
 
         if run % max(1, num_exec // 10) == 0:
             print(f"Random search {run + 1}/{num_exec}")
@@ -74,6 +76,8 @@ def run_random_search(problem, num_exec=2000, rng=None, session=None, max_values
         "all_des": all_des,
         "all_obj": all_obj,
         "all_constraints": all_constraints,
+        "all_constraint_vals": all_constraint_vals,
+        "all_metrics": all_metrics,
         "pareto_front_obj": pareto_front_obj,
         "hypervolumes": hypervolumes,
         "num_objectives": num_objectives,

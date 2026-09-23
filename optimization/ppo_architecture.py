@@ -190,10 +190,9 @@ class Critic(nn.Module):
     constraint penalty) happens OUTSIDE the model [2][3].
     """
 
-    def __init__(self, device, params, num_genes, num_objectives):
+    def __init__(self, device, params, num_objectives):
         super().__init__()
         self.device = device
-        self.num_genes = num_genes
         self.num_objectives = num_objectives
         self.out_dim = num_objectives + 1          # + total violation [2][3]
         self.dense_dim = params.get("dense_dim", 64)
@@ -219,15 +218,15 @@ class Critic(nn.Module):
         x = self.encoder(x)
         x = self.positional_encoding(x.transpose(0, 1)).transpose(0, 1)
         x = self.transformer_decoder(x)              # [batch, num_genes, dense_dim]
-        x = self.output_layer(x)                     # [batch, num_genes, num_objectives]
+        x = self.output_layer(x)                     # [batch, num_genes, out_dim]
         return x[:, -1, :]                           # last-token readout [2]
 
     def value(self, design):
         with torch.no_grad():
-            return self.forward(design).squeeze(0)   # [num_objectives]
+            return self.forward(design).squeeze(0)   # [out_dim]
 
     def ppo_update(self, designs_batch, targets_batch):
-        """MSE against realized per-objective vector; scalarization is external [2][3]."""
+        """MSE against realized [obj0, ..., objN, violation] [2][3]."""
         self.optimizer.zero_grad()
         preds = self.forward(np.array(designs_batch))
         targets = torch.as_tensor(np.array(targets_batch), dtype=torch.float32,

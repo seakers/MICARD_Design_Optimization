@@ -32,6 +32,7 @@ def run_ppo_optimization(problem, epochs=40, mini_batch_size=32,
 
     all_des, all_obj = [], []
     all_constraints, all_constraint_vals = [], []
+    all_metrics = []
     all_actor_loss, all_critic_loss, all_kl, all_reward = [], [], [], []
 
     def scalar_reward(objectives, is_constrained, total_violation, weights):
@@ -45,7 +46,8 @@ def run_ppo_optimization(problem, epochs=40, mini_batch_size=32,
         return reward
 
     for epoch in range(epochs):
-        batch_weights, batch_genes, batch_logprobs, batch_rewards = [], [], [], []
+        batch_weights, batch_genes, batch_logprobs = [], [], []
+        batch_rewards, batch_targets = [], []
 
         for _ in range(mini_batch_size):
             # Random preference weights, normalized to sum to 1 [4][2].
@@ -53,28 +55,37 @@ def run_ppo_optimization(problem, epochs=40, mini_batch_size=32,
             w = w / w.sum()
 
             genes, log_prob = actor.sample_action(w)
-            objectives, is_constrained, cvals = problem.evaluate(genes)
+            objectives, is_constrained, cvals, metrics = problem.evaluate(genes)
             total_violation = float(np.mean(cvals))
             norm_objectives = objectives / max_values if max_values is not None else objectives
             reward = scalar_reward(norm_objectives, is_constrained,
-                                   total_violation, w)
+                                total_violation, w)
 
             batch_weights.append(w)
             batch_genes.append(genes)
             batch_logprobs.append(float(log_prob.item()))
             batch_rewards.append(reward)
+            # Critic target = realized per-objective vector [3][user].
+            batch_targets.append(list(norm_objectives) + [total_violation])
 
             all_des.append(genes)
             all_obj.append(objectives)
             all_constraints.append(is_constrained)
             all_constraint_vals.append(cvals)
+            all_metrics.append(metrics)
             if session and not is_constrained:
-                session.save_design(problem.last_design)
+                session.save_design(problem.last_design, algorithm="ppo_design_synthesis")
 
-        # Advantages = reward - baseline value(weights) [4].
-        values = np.array([critic.value(w).item() for w in batch_weights])
+        # Advantages = reward - scalarized critic prediction over the design [3][user].
+        values = []
+        for genes, w in zip(batch_genes, batch_weights):
+            pred = critic.value(genes).cpu().numpy()        # [obj..., violation]
+            pred_obj = pred[:num_objectives]
+            pred_viol = float(pred[num_objectives])
+            # Treat predicted violation as infeasible so the penalty is applied [3][4].
+            values.append(scalar_reward(pred_obj, pred_viol > 0.0, pred_viol, w))
         returns = np.array(batch_rewards, dtype=float)
-        advantages = returns - values
+        advantages = returns - np.array(values, dtype=float)
         if advantages.std() > 1e-8:
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
@@ -87,7 +98,7 @@ def run_ppo_optimization(problem, epochs=40, mini_batch_size=32,
                 break
 
         # Critic update [4][2].
-        critic_loss = critic.ppo_update(batch_weights, returns)
+        critic_loss = critic.ppo_update(batch_genes, batch_targets)
 
         all_actor_loss.append(actor_loss)
         all_critic_loss.append(critic_loss)
@@ -132,6 +143,8 @@ def run_ppo_optimization(problem, epochs=40, mini_batch_size=32,
         "all_des": all_des,
         "all_obj": all_obj,
         "all_constraints": all_constraints,
+        "all_constraint_vals": all_constraint_vals,
+        "all_metrics": all_metrics,
         "pareto_front_obj": pareto_front_obj,
         "hypervolumes": hypervolumes,
         "num_objectives": num_objectives,

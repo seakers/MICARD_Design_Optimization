@@ -37,9 +37,10 @@ class Design:
     def dof(self):
         return len(self.segments)
 
-    def to_dict(self):
+    def to_dict(self, algorithm=None):
         return {
             "base_port": self.base_port,
+            "algorithm": algorithm if algorithm else "unknown",
             "segments": [asdict(s) for s in self.segments],
             "metrics": self.metrics,
         }

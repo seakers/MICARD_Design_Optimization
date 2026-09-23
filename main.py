@@ -8,6 +8,7 @@ saves all designs + intermediate results for traceability [MICARD 5.0].
 """
 import argparse
 import contextlib
+import csv
 import json
 import sys
 from dataclasses import dataclass
@@ -27,6 +28,7 @@ from optimization.ppo_optimizer import run_ppo_optimization
 from outputs.urdf_export import export_urdf
 from outputs.bom import export_bom
 from outputs.visualization import export_viewer, export_pareto_plot, export_hypervolume_plot
+
 
 _DEFAULT_CATALOG_PATH = Path(__file__).resolve().parent / "utils" / "dynamixel_single_axis.json"
 
@@ -72,6 +74,8 @@ def export_top_designs(method, results, design_space, session,
         name=method.key,
     )
 
+    append_design_points_csv(session, method, results, session.dirs["outputs"])
+
     manifest = []
     for rank, idx in enumerate(pareto_idx[:max_designs]):
         design = design_space.decode(np.asarray(all_des[idx], dtype=float))
@@ -81,32 +85,46 @@ def export_top_designs(method, results, design_space, session,
         if report:
             design.metrics.update(report)
 
-        session.save_design(design, name=name)  # traceability (re-saved with reachability, if any)
-        urdf_path, srdf_path = export_urdf(design, session.dirs["outputs"], name)
-        bom_json_path, bom_csv_path = export_bom(design, session.dirs["outputs"], name)
-        viewer_path = export_viewer(design, session.dirs["outputs"], name)
-
         objectives = dict(zip(RobotArmProblem.OBJECTIVE_KEYS, (float(v) for v in all_obj[idx])))
         session.log_intermediate(f"{name}_objectives", objectives)
-        print(f"  exported {name}: {objectives}")
+        # print(f"  exported {name}: {objectives}")
 
         manifest.append({
             "name": name,
             "rank": rank,
             "objectives": objectives,
             "reachability": report or None,
-            "urdf_path": str(urdf_path),
-            "srdf_path": str(srdf_path),
-            "bom_json_path": str(bom_json_path),
-            "bom_csv_path": str(bom_csv_path),
-            "viewer_path": str(viewer_path),
         })
 
     return {"design_space_plot": str(plot_path), "designs": manifest}
 
 
-def run(catalog_path=None, max_joints=6, n_ports=7,
-        random_evals=None, ga_pop=100, ga_gen=16, seed=None,
+def append_design_points_csv(session, method, results, out_dir):
+    """Append every evaluated design's objectives to the shared CSV log."""
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / "design_points.csv"
+    metric_names = list(dict.fromkeys(
+        name
+        for name in results["all_metrics"][0]
+    ))
+    fieldnames = ["session_id", "design_id", *metric_names]
+    write_header = not path.exists() or path.stat().st_size == 0
+
+    with path.open("a", newline="", encoding="utf-8") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        if write_header:
+            writer.writeheader()
+        for index, metric_vals in enumerate(results["all_metrics"]):
+            writer.writerow({
+                "session_id": session.session_id,
+                "design_id": f"{method.key}_{index}",
+                **{name: metric_vals[name] for name in metric_names if name in metric_vals},
+            })
+
+
+def run(catalog_path=None, max_joints=8, n_ports=7,
+        random_evals=None, ga_pop=10, ga_gen=8, seed=None,
         random_search=True, genetic_algorithm=True, ppo=True,
         output_root="designs"):
     """Run one MICARD design-exploration session end to end.
@@ -157,6 +175,10 @@ def run(catalog_path=None, max_joints=6, n_ports=7,
         print(f"\n=== Running {method.name} ===")
         results = method.runner(problem, session=session, **method.kwargs)
         storage[method.key] = results
+        # Keep the shared CSV with the session's other generated artifacts.
+        # Passing output_root can collide with a pre-existing directory named
+        # design_points.csv.
+        append_design_points_csv(session, method, results, session.dirs["outputs"])
         n_valid = int(np.sum(~np.asarray(results["all_constraints"], dtype=bool)))
         final_hv = float(results["hypervolumes"][-1]) if results["hypervolumes"] else 0.0
         print(f"{method.name}: {n_valid} feasible, final hypervolume {final_hv:.4f}")
@@ -188,12 +210,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--catalog-path", default=None,
                         help="JSON parts catalog (default: the bundled Dynamixel catalog)")
-    parser.add_argument("--max-joints", type=int, default=6)
+    parser.add_argument("--max-joints", type=int, default=8)
     parser.add_argument("--n-ports", type=int, default=7)
     parser.add_argument("--random-evals", type=int, default=None,
                         help="default: ga_pop * ga_gen")
-    parser.add_argument("--ga-pop", type=int, default=100)
-    parser.add_argument("--ga-gen", type=int, default=16)
+    parser.add_argument("--ga-pop", type=int, default=10)
+    parser.add_argument("--ga-gen", type=int, default=8)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--no-random-search", dest="random_search", action="store_false",
                         help="skip random search (default: run it)")
