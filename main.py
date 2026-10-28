@@ -20,7 +20,7 @@ import numpy as np
 from utils.catalog import load_catalog
 from utils.design_space import DesignSpace
 from utils.session import Session
-from evaluation.problem import RobotArmProblem
+from evaluation.problem import RobotArmProblem, ProblemConfig
 from evaluation.reachability_screen import screen_reachability
 from optimization.random_search import run_random_search
 from optimization.genetic_algorithm import run_genetic_algorithm
@@ -41,7 +41,7 @@ class OptimizationMethod:
     kwargs: dict
 
 
-def _feasible_pareto_indices(all_obj, all_constraints):
+def _feasible_pareto_indices(all_obj, all_constraints, objective_min_max):
     """Feasible Pareto-optimal indices (minimization-normalized) [utils.pareto]."""
     from utils.pareto import is_pareto_efficient, normalize_objectives
     all_obj = np.asarray(all_obj, dtype=float)
@@ -49,27 +49,26 @@ def _feasible_pareto_indices(all_obj, all_constraints):
     feasible = np.where(~all_constraints)[0]
     if len(feasible) == 0:
         return []
-    hv_obj, _ = normalize_objectives(all_obj[feasible],
-                                     RobotArmProblem.OBJECTIVE_MIN_MAX)
+    hv_obj, _ = normalize_objectives(all_obj[feasible], objective_min_max)
     mask = is_pareto_efficient(hv_obj, return_mask=True)
     return list(feasible[mask])
 
 
-def export_top_designs(method, results, design_space, session,
+def export_top_designs(method, results, design_space, session, problem,
                        max_designs=5):
-    """Export URDF/SRDF, BOM, and a viewer for a method's top Pareto designs."""
     all_des = results["all_des"]
     all_obj = results["all_obj"]
     all_constraints = results["all_constraints"]
 
-    pareto_idx = _feasible_pareto_indices(all_obj, all_constraints)
+    pareto_idx = _feasible_pareto_indices(all_obj, all_constraints,
+                                          problem.objective_min_max)
     if not pareto_idx:
         print(f"{method.name}: no feasible designs to export.")
         return {"design_space_plot": None, "designs": []}
 
     plot_path = export_pareto_plot(
         all_obj, all_constraints,
-        objective_labels=list(RobotArmProblem.OBJECTIVE_KEYS),
+        objective_labels=list(problem.objective_keys),
         out_dir=session.dirs["outputs"],
         name=method.key,
     )
@@ -85,7 +84,7 @@ def export_top_designs(method, results, design_space, session,
         if report:
             design.metrics.update(report)
 
-        objectives = dict(zip(RobotArmProblem.OBJECTIVE_KEYS, (float(v) for v in all_obj[idx])))
+        objectives = dict(zip(problem.objective_keys, (float(v) for v in all_obj[idx])))
         session.log_intermediate(f"{name}_objectives", objectives)
         # print(f"  exported {name}: {objectives}")
 
@@ -126,7 +125,7 @@ def append_design_points_csv(session, method, results, out_dir):
 def run(catalog_path=None, max_joints=8, n_ports=7,
         random_evals=None, ga_pop=10, ga_gen=8, seed=None,
         random_search=True, genetic_algorithm=True, ppo=True,
-        output_root="designs"):
+        output_root="designs", problem_config=None):
     """Run one MICARD design-exploration session end to end.
 
     random_search/genetic_algorithm/ppo each enable or disable that method
@@ -140,20 +139,22 @@ def run(catalog_path=None, max_joints=8, n_ports=7,
 
     session = Session(root=output_root)
     print(f"Session: {session.session_id} (root={session.root})")
+
+    # 2. Load catalog generically; drop entries missing torque/weight/cost
+    catalog = load_catalog(catalog_path)
+
+    # 3. Build design space + problem.
+    design_space = DesignSpace(catalog, max_joints=max_joints, n_ports=n_ports)
+    cfg = ProblemConfig.from_json(problem_config) if problem_config is not None else ProblemConfig()
+    problem = RobotArmProblem(design_space, config=cfg)
+
     session.log_intermediate("run_config", {
         "catalog_path": str(catalog_path), "max_joints": max_joints,
         "n_ports": n_ports, "random_evals": random_evals,
         "ga_pop": ga_pop, "ga_gen": ga_gen, "seed": seed,
         "random_search": random_search, "genetic_algorithm": genetic_algorithm, "ppo": ppo,
+        "problem_config": cfg.as_dict(),
     })
-
-    # 2. Load catalog generically; drop entries missing torque/weight/cost
-    catalog = load_catalog(catalog_path)
-
-    # 3. Build design space + problem. 7 ports match the platform scenario
-    design_space = DesignSpace(catalog, max_joints=max_joints, n_ports=n_ports)
-    problem = RobotArmProblem(design_space)
-    random_evals = ga_pop * ga_gen if random_evals is None else random_evals
 
     #4. Run optimizations
     method_objs = []
@@ -194,7 +195,8 @@ def run(catalog_path=None, max_joints=8, n_ports=7,
 
     # 5. Export deliverables for the top designs from each method
     for method in method_objs:
-        export = export_top_designs(method, storage[method.key], design_space, session)
+        export = export_top_designs(method, storage[method.key], design_space,
+                                    session, problem)
         method_summaries[method.key].update(export)
 
     print(f"\nDone. All artifacts under: {session.root}")
@@ -228,6 +230,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--json", action="store_true",
                         help="print run()'s result as one JSON line on stdout instead of "
                              "a human-readable summary")
+    parser.add_argument("--problem-config", default=None,
+                        help="path to a JSON file defining objectives and "
+                             "constraints (default: the built-in mission setup)")
     return parser
 
 

@@ -326,11 +326,17 @@ def export_pareto_plot(all_obj, all_constraints, objective_labels, out_dir,
         return [all_obj[i].tolist() for i in indices]
 
     all_idx = list(range(len(all_obj)))
-    dominated_idx = [i for i in all_idx if i not in pareto_idx]
+    pareto_set = set(pareto_idx)
+    infeasible = np.asarray(all_constraints, dtype=bool)
+
+    dominated_idx = [i for i in all_idx
+                     if i not in pareto_set and not infeasible[i]]
+    infeasible_idx = [i for i in all_idx if infeasible[i]]
 
     data = {
         "labels": objective_labels,
         "dominated": rows(dominated_idx),
+        "infeasible": rows(infeasible_idx),
         "pareto": rows(pareto_idx),
     }
     payload = json.dumps(data)
@@ -359,15 +365,21 @@ body { margin: 0; font-family: Arial, sans-serif; background: #edf2f6; color: #1
 const data = __DATA_JSON__;
 function col(rows, i) { return rows.map(r => r[i]); }
 const dominated = {
-  type: 'scatter3d', mode: 'markers', name: 'Dominated',
+  type: 'scatter3d', mode: 'markers', name: 'Dominated (feasible)',
   x: col(data.dominated, 0), y: col(data.dominated, 1), z: col(data.dominated, 2),
   marker: { size: 3, color: '#9fb0bf', opacity: 0.55 }
+};
+const infeasible = {
+  type: 'scatter3d', mode: 'markers', name: 'Infeasible',
+  x: col(data.infeasible, 0), y: col(data.infeasible, 1), z: col(data.infeasible, 2),
+  marker: { size: 3, color: '#f4a3a3', opacity: 0.55 }
 };
 const pareto = {
   type: 'scatter3d', mode: 'markers', name: 'Pareto front',
   x: col(data.pareto, 0), y: col(data.pareto, 1), z: col(data.pareto, 2),
   marker: { size: 6, color: '#1f6fe5' }
 };
+
 const layout = {
   title: '__TITLE__ design space',
   scene: {
@@ -377,7 +389,7 @@ const layout = {
   },
   margin: { l: 0, r: 0, t: 40, b: 0 }
 };
-Plotly.newPlot('plot', [dominated, pareto], layout, { responsive: true });
+Plotly.newPlot('plot', [dominated, infeasible, pareto], layout, { responsive: true });
 </script>
 </body>
 </html>
@@ -399,6 +411,11 @@ def export_hypervolume_plot(storage, out_dir, name="hypervolume_comparison"):
     series = []
     for method_name, results in storage.items():
         runs = [list(r) for r in results.get("all_runs_hypervolumes", []) if len(r)]
+        # Fall back to the single-run history that main.py already records [1].
+        if not runs:
+            single = results.get("hypervolumes")
+            if single:
+                runs = [list(single)]
         if not runs:
             continue
         min_len = min(len(r) for r in runs)                 # align to shortest run

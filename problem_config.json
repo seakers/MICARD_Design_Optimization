@@ -1,0 +1,20 @@
+{
+  "objectives": [
+    {"metric": "manipulability", "direction": "max"},
+    {"metric": "cost", "direction": "min"},
+    {"metric": "weight", "direction": "min"}
+  ],
+  "constraints": [
+    {"name": "mass", "type": "lower_bound", "metric": "weight",
+     "limit": 8.0, "scale": 50.0, "clip": [0.0, 1.0]},
+    {"name": "yield", "type": "lower_bound", "metric": "min_yield_margin",
+     "limit": 0.0, "scale": 1.0, "default": 1.0, "clip": [0.0, 1.0]},
+    {"name": "deflection", "type": "upper_bound", "metric": "max_deflection_ratio",
+     "limit": 0.01, "scale": 1.0, "default": 0.0, "clip": [0.0, 1.0]},
+    {"name": "reach", "type": "lower_bound", "metric": "abs_reach_m",
+     "limit": 2.0, "scale": 2.0, "default": 0.0, "clip": [0.0, 1.0]},
+    {"name": "dof", "type": "lower_bound", "metric": "dof",
+     "limit": 1.0, "scale": 1.0, "default": 0.0, "graded": false}
+  ],
+  "feasibility_tol": 1e-9
+}
